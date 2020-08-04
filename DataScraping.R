@@ -71,4 +71,4 @@ main_webpage$mouseMoveToLocation(webElement = Temp_individual_item)
 main_webpage$click(1)
 Test
 HeelsPage1 <- main_webpage$getPageSource() %>% .[[1]] %>% read_html()
-#test
+
