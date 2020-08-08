@@ -1,0 +1,274 @@
+---
+title: "Scraping from vestiairecollective"
+author: "Ran K"
+date: "8/5/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(RSelenium)
+library(rvest)
+library(stringr)
+# 1. Lunch docker and set up a chrome enironment, the command is "docker run --name chrome -v /dev/shm:/dev/shm -d -p 4445:4444 -p 5901:5900 selenium/standalone-chrome-debug:latest"
+# 2. "docker ps -a" to verify that it is up
+# 3. Lunch tightVNC and connect to out server.
+```
+
+```{r Server Preparation, echo = FALSE}
+remDr <- remoteDriver(remoteServerAddr = "192.168.99.100", port = 4445L, browser = "chrome")
+remDr$open()
+```
+
+```{r Navigating to login screen, echo=FALSE}
+remDr$navigate("https://us.vestiairecollective.com/")
+main_webpage <- remDr$findElement("css", "body")
+Login_button <- remDr$findElement(using = "css", ".d-lg-none+ .d-lg-block .resetButton")
+main_webpage$mouseMoveToLocation(webElement = Login_button) 
+main_webpage$click(1)
+# Now i need to manuly connect to profile
+```
+
+``` {r Creating a dataframe}
+# This will be the database which will contain all heels sold
+df <- 
+  data.frame(Date_sold = as.character(),
+             Likes = as.numeric(),
+             Designer = as.character(),
+             Model = as.character(),
+             Price_sold = as.character(), 
+             # As the site uses different currencies, ill do the exchange rate after.
+             Condition = as.character(),
+             Material = as.character(),
+             Color = as.character(),
+             Width = as.character(), # If noted
+             Height = as.character(), # If noted
+             Depth = as.character(), # If noted
+             Size = as.character(), 
+             # Will need to converge all sizes into EU sizes after.
+             Location = as.character(),
+             Seller = as.character(), # Is a part of the same string as location
+             Sold_with = as.character(), # A vector of items
+             Online_since = as.character(),
+             Reference = as.numeric()
+             )
+
+```
+
+``` {r Scraping Preparation}
+GoToSleep <- function() {
+  print("Going to sleep")
+  Sys.sleep(runif(1,8,9))
+}
+
+# Initialising  the variables we will collect.
+Price <- list()
+Likes <- list()
+Other_Details <- list() # all other information (will be stored in a vector)
+Link_list <- vector()
+
+
+}
+write.csv(Designers,file = "DesignerList.csv",row.names = FALSE)
+```
+
+``` {r Scraping links for future content scraping}
+for (Index_designer in 18:nrow(Designers)) {
+  if (Designers$Number[Index_designer] >= 1000) {
+    print(paste0("There are too many individual products in - ",
+                 Designers$Designers[Index_designer],
+                                     ", we move to the next one."))
+    next()
+  }
+  else {
+    print(paste0("Starting to scrape links - handbags by ",
+                 Designers$Designers[Index_designer]))
+    remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/",
+                          Designers$Designers[Index_designer],"/#sold=1"))
+    GoToSleep()
+    print(remDr$getCurrentUrl())
+  }
+
+# At the start ill navigate to any start page from where we will scrape all links
+
+for (Index_page in 1:17) { # There are a maximum of 17 pages of 60 articles per page.
+  print(paste0("Trying to scrape links from page - ",Index_page))
+  Current_page <- remDr$getCurrentUrl()
+  remDr$navigate(sub("/p-\\d{1,2}/#|/#",paste0("/p-",Index_page,"/#"),Current_page))
+  GoToSleep() 
+  # Ill inject manually the page number then check if there are
+  # proper links to individual heels, if not, 
+  # it means that we are finished and we can break.
+
+  #main_webpage <- remDr$findElement("css", "body") dont think its needed 
+    
+  
+  
+  # Collecting the lonks for this individual page
+  Links_in_page <- # Collecting all links
+    remDr$findElements(using = "css", "meta") 
+  Links_in_page <- # Grouping in a list
+    sapply(Links_in_page,function(x){x$getElementAttribute('content')}) 
+  Links_in_page <- # Changing format to a vector
+    as.vector(unlist(Links_in_page)) 
+  Links_in_page <- # Filtering to find only links to individual heals
+    Links_in_page[which(grepl("^us.vestiairecollective.com/women-bags/handbags/.+-[[:digit:]]{3,}.shtml$",Links_in_page) == TRUE)]
+  
+  if (length(Links_in_page) == 0) {
+    print("Breaking")
+    break() # There are no valid links for handbags which means that we need to break
+  }
+  
+  
+  for (Link in Links_in_page) 
+    {
+    if (is.na(match(Link,Link_list)) == TRUE) 
+      # Here we will check for duplicates
+      # We will add each link to our final list only if it does not 
+      # already appears there
+    {
+      Link_list <- append(Link_list,Link)
+    }
+  }
+    
+}
+}
+```
+  
+```{r Scraping content from individual links}  
+    
+  for (Index_product in 1:length(Link_list))
+  {
+    
+    remDr$navigate(Link_list[i])
+    
+    print(paste0("scraping product number - ",Index_product))
+    
+    GoToSleep()
+    
+    Temp_Other_Details <- 
+      remDr$findElements(using = "css", ".descriptionList__block__list li") 
+    Temp_Likes <- 
+      remDr$findElement(using = "css", ".productTitle__like")
+    Temp_Price <- 
+      remDr$findElement(using = "css", ".productPrice__sold")
+  
+    Other_Details[[Index_product]] <-
+      sapply(Temp_Other_Details,function(x){x$getElementText()[[1]]})
+    Likes[Index_product] <- 
+      Temp_Likes$getElementText()
+    Price[Index_product] <- 
+      Temp_Price$getElementText()
+    }
+
+
+```
+
+``` {r Functions for populating the dataframe}
+# This function will help us speep up the process of extracting the correct strings from the "Other_Details" list.
+# It locates an instance where there is a specific expression, then removing it from the original string.
+LocateAndReplace <- function(String,Location)
+{
+      sub(String,"", 
+       Location[which(grepl(String,Location) == TRUE)],
+        Location)
+}
+```
+
+``` {r Populating the dataframe}
+df_index <- nrow(df) # As we will populate the dataframe several times, this will make sure we are not overwriting content
+
+#Looping through each of the 3 variables we scraped
+for (i in 1:length(Likes)) { # "Likes" could be replaced by "Price" or "Other_Details".
+  
+  df[df_index +i,"Date_sold"] <-
+    regmatches(Price[i],
+           regexpr("\\w+\\s{1}\\d{1,2},\\s{1}\\d{4}$",
+                   Price[i],perl = TRUE))
+  
+  df[df_index +i,"Likes"] <-
+    as.numeric(Likes[[i]])
+  
+  # When I can I will be using the "LocateAndReplace" function.
+  df[df_index +i,"Designer"] <- 
+    LocateAndReplace("Designer: ",Other_Details[[i]])
+  
+  try(df[df_index +i,"Model"] <- 
+    LocateAndReplace("Model: ",Other_Details[[i]]), silent = T)
+  
+  df[df_index +i,"Price_sold"] <-
+    regmatches(Price[i],regexpr("(?<=Sold at )\\d+.+(?= on)",
+                                Price[i],perl = TRUE)) 
+  # This is in euros
+  
+  df[df_index +i,"Condition"] <-
+    LocateAndReplace("Condition: ",Other_Details[[i]])
+  
+  df[df_index +i,"Material"] <-
+    LocateAndReplace("Material: ",Other_Details[[i]])
+  
+  df[df_index +i,"Color"] <-
+    LocateAndReplace("Color: ",Other_Details[[i]])
+  
+  try(df[df_index +i,"Heel_height"] <-
+    LocateAndReplace("Heel height: ",Other_Details[[i]]), silent = T) 
+  # This will be empty for most observations
+  
+  df[df_index +i,"Size"] <-
+    sub(" sizing guide", ""
+        ,LocateAndReplace("Size: ",Other_Details[[i]]))
+  # As the variable has some unwanted parts at the end of the string, 
+  # we will preform another "sub" action before assigning to 
+  # the dataframe
+  
+  df[df_index +i,"Location"] <-
+    sub(",.+$","",
+        LocateAndReplace("Location:",Other_Details[[i]]))
+  # Again, we will preform another sub before assigning to the df.
+  
+  try(df[df_index +i,"Seller"] <-
+    sub("^.+ from the seller ","",
+        LocateAndReplace("Location:",Other_Details[[i]])), silent = T)
+  
+  df[df_index +i,"Sold_with"] <-
+    paste(Other_Details[[i]][which(grepl(":",Other_Details[[i]]) == FALSE)],
+          collapse = " ,")
+  
+    df[df_index +i,"Online_since"] <-
+     LocateAndReplace("Online since: ",
+                               Other_Details[[i]])
+  
+  df[df_index +i,"Reference"] <-
+    LocateAndReplace("Reference: ",Other_Details[[i]])
+  
+  
+  }
+```
+
+
+``` {r Testing Zone}
+main_webpage <- remDr$findElement("css", "body")
+Next_button <- remDr$findElement(using = "css",
+                               ".catalog__sortActionBar .catalogPagination__prevNextButton--next")
+main_webpage$mouseMoveToLocation(webElement = Next_button) 
+main_webpage$click(1)
+
+
+### Prepering the List of designers
+#This is not needed as i have allready saved it to csv
+remDr$navigate("https://us.vestiairecollective.com/women-bags/handbags/#sold=1")
+Labels <- remDr$findElements(using = "css","label")
+Labels <- sapply(Labels,function(x){x$getElementText()[[1]]})
+Designers <- Labels[7:106]
+Designers <- as.data.frame(Designers)
+Designers["Number"] <- as.numeric()
+for (i in 1:nrow(Designers)) {
+  Designers$Number[i] <- as.numeric(regmatches(Designers[i,1],
+                               regexpr("(?<=\\()\\d+(?=\\))",Designers[i,1],perl = TRUE)))
+  Designers$Designers[i] <- gsub(" ","-",sub(" \\(\\d+\\)","",Designers[i,1]))
+
+  write.csv(Link_list,"LinkList.csv")
+  
+#.catalogPagination__prevNextButton__text
+```
+
