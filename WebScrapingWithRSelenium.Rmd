@@ -21,63 +21,107 @@ remDr <- remoteDriver(remoteServerAddr = "192.168.99.100", port = 4445L, browser
 remDr$open()
 ```
 
-```{r Navigating to login screen, echo=FALSE}
+```{r Website connection, echo=FALSE}
 remDr$navigate("https://us.vestiairecollective.com/")
 main_webpage <- remDr$findElement("css", "body")
 Login_button <- remDr$findElement(using = "css", ".d-lg-none+ .d-lg-block .resetButton")
 main_webpage$mouseMoveToLocation(webElement = Login_button) 
 main_webpage$click(1)
-# Now i need to manuly connect to a profile
+
+# connecting to our account
+Useremail_button <- remDr$findElement(using = "css", "#user_email")
+Useremail_button$sendKeysToElement(list("WebScraperTest@sharklasers.com"))
+Password_button <- remDr$findElement(using = "css", "#user_password")
+Password_button$sendKeysToElement(list("TestTestTest"))
+Connect_button <- remDr$findElement(using = "css", ".login__submit")
+main_webpage <- remDr$findElement("css", "body")
+main_webpage$mouseMoveToLocation(webElement = Connect_button) 
+main_webpage$click(1)
+
+# removing variables
+rm(Login_button)
+rm(Useremail_button)
+rm(Password_button)
+rm(Connect_button)
+rm(main_webpage)
 ```
 
 ``` {r Functions we will use}
 GoToSleep <- function() {
   print("Going to sleep")
-  Sys.sleep(runif(1,8,9))
+  Sys.sleep(runif(1,4,6))
 }
 
-SortByPriceDesc <- function() {
+SortByPriceDesc <- function()
+{
   sort_button <- remDr$findElement(using = "css",value = ".catalogSort__button")
   remDr$mouseMoveToLocation(webElement = sort_button)
   remDr$click(1)
-  sort_button <- remDr$findElement(using = "id", value = "mat-radio-4")
-  remDr$mouseMoveToLocation(webElement = sort_button)
+  selection_button <- remDr$findElements(using = "css", value = ".mat-radio-label-content")
+  selection_button <- selection_button[[3]]
+  remDr$mouseMoveToLocation(webElement = selection_button)
   remDr$click(1)
-}
+  }
 
-SortByPriceAsc <- function() {
+SortByPriceAsc <- function() 
+  {
   sort_button <- remDr$findElement(using = "css",value = ".catalogSort__button")
   remDr$mouseMoveToLocation(webElement = sort_button)
   remDr$click(1)
-  sort_button <- remDr$findElement(using = "id", value = "mat-radio-3")
-  remDr$mouseMoveToLocation(webElement = sort_button)
+  selection_button <- remDr$findElements(using = "css", value = ".mat-radio-label-content")
+  selection_button <- selection_button[[2]]
+  remDr$mouseMoveToLocation(webElement = selection_button)
+  remDr$click(1)
+  }
+
+Next_page <- function() 
+{
+ # This will press the next page butten if available
+  Next_button <- 
+  remDr$findElement(using = "css", value = ".catalogPagination__prevNextButton--next .catalogPagination__prevNextButton__text")
+  remDr$mouseMoveToLocation(webElement = Next_button)
   remDr$click(1)
 }
-
-SetMinPrice <- function(PriceMin) {
+  
+SetMinPrice <- function(PriceMin) 
+{
   Min_button <- remDr$findElement(using = "css",value = "#price-range-min")
   remDr$mouseMoveToLocation(webElement = Min_button)
   remDr$click(2)
   Min_button$sendKeysToElement(list(PriceMin))
-} #not needed
+}
 
-SetMaxPrice <- function(PriceMax) {
+SetMaxPrice <- function(PriceMax) 
+{
   Max_button <- remDr$findElement(using = "css",value = "#price-range-max") 
   remDr$mouseMoveToLocation(webElement = Max_button)
   remDr$click(2)
   Max_button$sendKeysToElement(list(PriceMax))
-} #not needed
+} 
+
+Detect_Next_Page_button <- function()
+{
+  Next_button <- try(remDr$findElement(using = "css", value = ".catalogPagination__prevNextButton--next .catalogPagination__prevNextButton__text"),silent = TRUE)
+  if_else(class(Next_button) == "try-error", 0,1)
+}
 
 ```
 
-``` {r Initialing variables for scraping}
+``` {r Initialing variables for scraping links}
 # Initialising  the variables we will collect.
-Price <- list()
-Likes <- list()
-Other_Details <- list() # all other information (will be stored in a vector)
-Link_list <- read.csv("LinkList.csv")
-Link_list <- Link_list[,2]
+Link_list <- read.csv("LouisVuitton_Links.csv")
+Link_list <- as.vector(Link_list[,1])
+Price_list <- read.csv("LouisVuitton_Price.csv")
+Price_list <- as.vector(Price_list[,1])
 Designer_List <- read.csv ("DesignerList.csv")
+
+Price_list <- vector()
+Link_list <- vector()
+
+Product_price <- list()
+Likes <- list()
+Other_Details <- list() # all other information (will be stored in a list)
+Seller_Details <- list()
 
 
 # This will be the database which will contain all the individual products
@@ -94,215 +138,235 @@ df <-
              Width = as.character(), # If noted
              Height = as.character(), # If noted
              Depth = as.character(), # If noted
-             Size = as.character(), 
-             # Will need to converge all sizes into EU sizes after.
              Location = as.character(),
              Seller = as.character(), # Is a part of the same string as location
              Sold_with = as.character(), # A vector of items
              Online_since = as.character(),
-             Reference = as.numeric()
+             Reference = as.numeric(),
+             Seller_title = as.character(), # Taken from the seller detail variable
+             Address = as.character()
              )
 ```
 
 ``` {r Preparing list of designers}
 ### Prepering the List of designers
 #This is not needed as i have allready saved it to csv
-remDr$navigate("https://us.vestiairecollective.com/women-bags/handbags/#sold=1")
+remDr$navigate("https://us.vestiairecollective.com/women-bags/handbags")
 Labels <- remDr$findElements(using = "css","label")
 Labels <- sapply(Labels,function(x){x$getElementText()[[1]]})
-Designer_List <- Labels[7:106] # This was checked manually
+Designer_List <- Labels[5:104] # This was checked manually
 Designer_List <- as.data.frame(Designer_List)
 Designer_List["Number"] <- as.numeric()
-for (i in 1:nrow(Designer_List)) {
+for (i in 1:nrow(Designer_List)) 
+  {
   Designer_List$Number[i] <- as.numeric(regmatches(Designer_List[i,1],
                                regexpr("(?<=\\()\\d+(?=\\))",Designer_List[i,1],perl = TRUE)))
-  Designer_List$Designers[i] <- gsub("& ","",Designer_List[i,3])
-  Designer_List$Designers[i] <- gsub(" ","-",sub(" \\(\\d+\\)","",Designer_List[i,3]))
+  Designer_List$Designers[i] <- gsub(" / | & "," ",Designer_List[i,1])
+  Designer_List$Designers[i] <- gsub("[&\\.']","",Designer_List[i,3])
   Designer_List$Designers[i] <- gsub("[éè]","e",Designer_List[i,3])
+  Designer_List$Designers[i] <- gsub("ï","i",Designer_List[i,3])
+  Designer_List$Designers[i] <- gsub(" \\(\\d+\\)$","",Designer_List[i,3])
+  Designer_List$Designers[i] <- gsub(" ","-",Designer_List[i,3])
+  
    
 }  
 
 # Its possible to save it as Designer_List.csv
-
+rm(Labels)
 ``` 
 
-``` {r link scraping function}
-MoveThroughPages_ScrapeAndAppendToList <- function(Link_list)
-{
+```{r improved scraping function}
+MoveThroughPages_ScrapeAndAppendToList <- function(Link_list,Price_list,Price_marker)
+  {
+  print("Sorting by price")
   
-for (Index_page in 1:17) 
-  { # There are a maximum of 17 pages of 60 articles per page.
-  print(paste0("Scraping links from page ",Index_page))
-  Current_page <- remDr$getCurrentUrl()
-  remDr$navigate(sub("/p-\\d{1,2}/#|/#",paste0("/p-",Index_page,"/#"),Current_page))
-  
-  print(Current_page)
-  GoToSleep() 
-  
-  print("Scraping links")
-  # Collecting the lonks for this individual page
-  Links_in_page <- # Collecting all links
-    remDr$findElements(using = "css", "meta") 
-  Links_in_page <- # Grouping in a list
-    unlist(sapply(Links_in_page,function(x){x$getElementAttribute('content')}))
-  Links_in_page <- # Filtering to find only links to individual heals
-    Links_in_page[which(grepl("^us.vestiairecollective.com/women-bags/handbags/.+-[[:digit:]]{3,}.shtml$",Links_in_page) == TRUE)]
-  
-  print("Appending")
-  Appended_item_index <- 0
-  for (Link in Links_in_page) 
-    {
-      
-    if (is.na(match(Link,Link_list)) == TRUE) 
-      # Here we will check for duplicates
-      # We will add each link to our final list only if it does not 
-      # already appears there
-    {
-      Link_list <- append(Link_list,Link)
-      Appended_item_index <- Appended_item_index + 1
-    }
-  }
-  print(paste0(Appended_item_index," items added"))
-  assign("Link_list",Link_list,envir = .GlobalEnv) 
-  # This is to have "Link_list" change in the global environement
-  if (length(Links_in_page) < 50) {
-    print("This is the last page in the selection")
-    break() # As we have 60 links in a full page,
-    # a page with less links means that that we cant move any further
-  }
-}
-}
-```
 
+  SortByPriceAsc()
+  
+  GoToSleep()
+  
+  Next_page_index <- 1
+  while (Next_page_index == 1) {
+    
+    print(remDr$getCurrentUrl())
+    GoToSleep() 
+    
+    print("Scraping links and prices")
+    # Collecting the links for this individual page
+    Links_in_page <- # Collecting all links
+      remDr$findElements(using = "css", "meta") 
+    Links_in_page <- # Grouping in a list
+      unlist(sapply(Links_in_page,function(x){x$getElementAttribute('content')}))
+    Links_in_page <- # Filtering to find only links to individual heals
+      Links_in_page[which(grepl("https://us.vestiairecollective.com/women-bags/handbags/.+-\\d{3,}.shtml$",Links_in_page) == TRUE)]
+   # Links_in_page <- gsub("^","https://",Links_in_page)
+    
+    # Collecting the price information in the page, we do this here to note what was the
+    # initial price and what is the current price (for sold and unsold items)
+    Prices_in_page <- 
+      remDr$findElements(using = "css", value = ".productSnippet__price")
+    Prices_in_page <- 
+      unlist(sapply(Prices_in_page,function(x){x$getElementText()[[1]]}))
+    
+    print("Appending links and prices")
+    # Adding the links and price information to our global variables
+    Appended_item_index <- 0
+    Updated_price_index <- 0
+    for (i in 1:length(Links_in_page))
+      {
+      if (is.na(match(Links_in_page[i],Link_list)) == TRUE)
+        {
+        # Here we will check for duplicates
+        # We will add append only if the link is unsued
+      
+        Link_list <- append(Link_list,Links_in_page[i])
+        Price_list <- append(Price_list,Prices_in_page[i])
+        Appended_item_index <- Appended_item_index + 1
+        }
+      else
+        {
+        Price_list[match(Links_in_page[i],Link_list)] <- Prices_in_page[i]
+        # This will update price information when we run the script again.
+        Updated_price_index <- Updated_price_index + 1
+        }
+
+      }
+  print(paste0(Appended_item_index," items added and "
+               ,Updated_price_index," Prices updated"))
+  assign("Link_list",Link_list,envir = .GlobalEnv)
+  assign("Price_list",Price_list,envir = .GlobalEnv)
+  # This is to have the lists of links and prices updated in the global environment
+
+  if (length(Links_in_page) == 0) 
+    {
+    print("There are no more links - breaking from the loop")
+    break()
+    }
+  
+  # We will keep track of the price of the last items that sold in the page, which will 
+  # be the highest, as we are sorting by ascending price, and when we dont have 
+  # anymore pages to scrape from, we will either move to another designer or use the
+  # price marker to set a minimum price.
+  
+
+  Price_marker <- tail(Prices_in_page, n = 1) # Getting the last element
+  Price_marker <- gsub(",",".",Price_marker) # Changing from coma to decimal point.
+  Price_marker <- gsub(" ","",Price_marker) #Removing white space.
+  Price_marker <- gsub("\\h","",Price_marker,perl = TRUE) #Removing thin white space.
+  
+
+  Price_marker <-
+    regmatches(Price_marker,
+           regexpr("(?<=\200)\\d+(?=\200$)|(?<=\200)\\d+\\.\\d+(?=\200$)|\\d+(?=\200$)|\\d+\\.\\d+(?=\200$)",
+                   Price_marker,perl = TRUE))
+  Price_marker <- as.numeric(gsub("\\h","",Price_marker,perl = TRUE)) #changing the thin whitespace and formatting as numeric
+  
+  # Locating only the instance of the second price if there are 2, and with or without 
+  # a decimal point.
+  print(paste0("our new minimum price is - ",Price_marker))
+  assign("Price_marker",Price_marker,envir = .GlobalEnv)
+  # Updating the price marker in the global enironment.
+  
+  Next_page_index <- Detect_Next_Page_button()
+  
+  if (Next_page_index == 1) 
+  {
+    print("next page button detected - moving on")
+    Next_page()
+  }
+  
+  
+  } # closing while loop
+  
+} # closing function
+
+
+
+```
 
 ``` {r Scraping links for future content scraping}
-for (Index_designer in 1:nrow(Designer_List)) 
-  {
-  # Here ill create several if statements which will change how we approch to task of scraping
-  # links of indiviual products
+# add a for loop running on the designer list for a full list
+for (Index_sold_item in 1:1) {
+  remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/louis-vuitton/#sold=",Index_sold_item))
+  GoToSleep()
   
-  # As we are confined into a presentation of a maximum of 1000 articals - (16 pages of 60
-  # articles and a 17th page with 40 articles), we can fork all products from small designers with
-  # less then 1k products sold in 1 go. for designers with 1-2k products we will not refilter but
-  # instead scrape once with sorting by ascending price and once with sorting by descending price.
-  # for bigger designers ill use a filter of price, with bigger increments for the big designers 
-  # and small increments for the huge ones like chanel with 14k products sold.
-  if (Designer_List$Number[Index_designer] <= 1000) { 
-    # small designers, we can scrape in one go.
-    
-    print(paste0(Designer_List$Designers[Index_designer],
-                 " - 1000 and less products sold"))
-    
-    
-    next() ########## As i Already finished this category ill skip 
-   
-    
-    
-    remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/",
-                          Designer_List$Designers[Index_designer],"/#sold=1"))
-
+  Maximum_price <- remDr$findElement(using = "css",value = 
+                        ".vc-price-range__col--max .vc-price-range__label")
+  Maximum_price <- unlist(Maximum_price$getElementText())
+  Maximum_price <- gsub(" \200","",Maximum_price) # Removing euro sign
+  Maximum_price <- gsub("[^0-9,]","",Maximum_price) # Removing euro sign
+  Maximum_price <- as.numeric(gsub(",",".",Maximum_price))
+  print(paste0("Stop marker is - ",Maximum_price))
+  # This is the marker in which we do not need to scrape anymore.
+  
+  Price_marker <- 999.01
+  # We will use the price marker to set the value on the minimal price.
+  while (Maximum_price > Price_marker) {
+    remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/louis-vuitton/#sold=",                Index_sold_item,"_priceMin=",as.character(Price_marker*100)))
     GoToSleep()
-    MoveThroughPages_ScrapeAndAppendToList(Link_list)
-  }
-  if (Designer_List$Number[Index_designer]>1000) {
-    print(paste0(Designer_List$Designers[Index_designer],
-                 " - over 1000 articles sold - filtering by price needed needed"))
-    remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/",
-                          Designer_List$Designers[Index_designer],"/#sold=1"))
-    GoToSleep()
-    
-    stopMarker <- remDr$findElement(using = "css",
-                                    value = ".vc-price-range__col--max .vc-price-range__label")
-    stopMarker <- stopMarker$getElementText()
-    stopMarker <- as.numeric(gsub("[€ ]|,\\d{1,2}","",stopMarker,perl = TRUE)) + 1
-    print(paste0("Stop marker is - ",stopMarker))
-    # This is the product who was sold for the highest price
-    
-    minPrice <- 0.01
-    maxPrice <- 10.01
-    while (stopMarker >= maxPrice & maxPrice <= 500.01)
-    {
-      remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/",
-                          Designer_List$Designers[Index_designer],                     "/#sold=1_priceMin=",as.character(minPrice*100),"_priceMax=",as.character(maxPrice*100)))
-      GoToSleep()
-      print(paste0("starting to scrape between ",minPrice," and ",maxPrice))
-      MoveThroughPages_ScrapeAndAppendToList(Link_list)
+    print(paste0("starting to scrape from a minimum price of ",Price_marker))
+    MoveThroughPages_ScrapeAndAppendToList(Link_list,Price_list,Price_marker)
+  } # while loop
 
-      minPrice <- minPrice + 10
-      maxPrice <- maxPrice + 10
-    }
-    maxPrice <- maxPrice + 40
-        while (stopMarker >= maxPrice & maxPrice <= 1000.01)
-    {
-      remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/",
-                          Designer_List$Designers[Index_designer],                     "/#sold=1_priceMin=",as.character(minPrice*100),"_priceMax=",as.character(maxPrice*100)))
-      GoToSleep()
-      print(paste0("starting to scrape between ",minPrice," and ",maxPrice))
-      MoveThroughPages_ScrapeAndAppendToList(Link_list)
+} # for loop sold item
 
-      minPrice <- minPrice + 50
-      maxPrice <- maxPrice + 50
-    }
-    maxPrice <- maxPrice + 50
-        while (stopMarker >= maxPrice & maxPrice <= 3000.01)
-    {
-      remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/",
-                          Designer_List$Designers[Index_designer],                     "/#sold=1_priceMin=",as.character(minPrice*100),"_priceMax=",as.character(maxPrice*100)))
-      GoToSleep()
-      print(paste0("starting to scrape between ",minPrice," and ",maxPrice))
-      MoveThroughPages_ScrapeAndAppendToList(Link_list)
-
-      minPrice <- minPrice + 100
-      maxPrice <- maxPrice + 100
-    }
-    maxPrice <- maxPrice + 900
-    while (stopMarker >= maxPrice)
-    {
-      remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/",
-                          Designer_List$Designers[Index_designer],                     "/#sold=1_priceMin=",as.character(minPrice*100),"_priceMax=",as.character(maxPrice*100)))
-      GoToSleep()
-      print(paste0("starting to scrape between ",minPrice," and ",maxPrice))
-      MoveThroughPages_ScrapeAndAppendToList(Link_list)
-
-      minPrice <- minPrice + 1000
-      maxPrice <- maxPrice + 1000
-    }
-    remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/",
-                          Designer_List$Designers[Index_designer],                     "/#sold=1_priceMin=",as.character(minPrice*100)))
-    GoToSleep()
-    paste("This is the last search for this desginer")
-    MoveThroughPages_ScrapeAndAppendToList(Link_list)
-    
-  }
-}
-
+rm(Maximum_price) # Removing uneeded variables
+rm(Price_marker)
+rm(Index_sold_item)
+paste("Finished")
+write.csv(Link_list,"LouisVuitton_Sold_Links.csv",row.names = FALSE,col.names = FALSE)
+write.csv(Price_list,"LouisVuitton_Sold_Price.csv",row.names = FALSE,col.names = FALSE)
 ```
-  
+
 ```{r Scraping content from individual links}  
+temp_time <- Sys.time()
+for (Index_product in 4000:5500)
+{
+  if (Index_product %% 100 == 0) {
+    print(Sys.time()-temp_time)
+    temp_time <- Sys.time()
+  }
+  if (Index_product %%10 == 0) {
+    print("Deploying decoy")
+    remDr$navigate("https://us.vestiairecollective.com/")
+    Sys.sleep(2)
     
-  for (Index_product in 1:length(Link_list))
-  {
-    
-    remDr$navigate(Link_list[i])
-    
-    print(paste0("scraping product number - ",Index_product))
-    
-    GoToSleep()
-    
-    Temp_Other_Details <- 
-      remDr$findElements(using = "css", ".descriptionList__block__list li") 
-    Temp_Likes <- 
-      remDr$findElement(using = "css", ".productTitle__like")
-    Temp_Price <- 
-      remDr$findElement(using = "css", ".productPrice__sold")
+  }
+  print(paste0("scraping product number - ",Index_product))
+  remDr$navigate(as.character(Link_list[Index_product]))
+  GoToSleep()
+  if (remDr$getCurrentUrl() != as.character(Link_list[Index_product])) {
+    print("This link is broken, moving on")
+    next()
+  }
+  page <- read_html(remDr$getPageSource()[[1]])
+  # Scraping text and appending
+
+    # Treating the price variable
+  #Product_price[[Index_product]] <- page %>% html_nodes(".productPrice__sold") %>% html_text()
   
-    Other_Details[[Index_product]] <-
-      sapply(Temp_Other_Details,function(x){x$getElementText()[[1]]})
-    Likes[Index_product] <- 
-      Temp_Likes$getElementText()
-    Price[Index_product] <- 
-      Temp_Price$getElementText()
-    }
+  #if (length(Product_price[[Index_product]]) == 0) {Product_price[[Index_product]] <- page %>%      html_nodes(".productPrice__price") %>% html_text() }
+
+  ###################
+  #As I decided to only treat items that where sold,
+  #there is no need to scrape the price as it was already taked care of
+  #in the link scraping step.
+  ###################
+  
+  
+  # Treating likes variable
+  Likes[Index_product] <- page %>% html_node(".productTitle__like") %>% html_text()
+  
+  # Treating the seller details
+  Seller_Details[[Index_product]] <- 
+    page %>% html_nodes(".sellerBlock__details div") %>% html_text()
+
+  # Treating the block of extra details
+  Other_Details[[Index_product]] <-
+    page %>% html_nodes(".descriptionList__block__list li") %>% html_text()
+
+  print("moving on")
+  }
 
 
 ```
@@ -322,13 +386,13 @@ LocateAndReplace <- function(String,Location)
 df_index <- nrow(df) # As we will populate the dataframe several times, this will make sure we are not overwriting content
 
 #Looping through each of the 3 variables we scraped
-for (i in 1:length(Likes)) { # "Likes" could be replaced by "Price" or "Other_Details".
-  
-  df[df_index +i,"Date_sold"] <-
-    regmatches(Price[i],
-           regexpr("\\w+\\s{1}\\d{1,2},\\s{1}\\d{4}$",
-                   Price[i],perl = TRUE))
-  
+ for (i in 1:length(Likes)) { # "Likes" could be replaced by "Price" or "Other_Details".
+  if (is.null(Likes[[i]])) {
+    next()
+  }
+  df[df_index +i,"Initial_price"] <-
+    as.numeric(Price[[i]][1]) 
+   
   df[df_index +i,"Likes"] <-
     as.numeric(Likes[[i]])
   
@@ -350,19 +414,19 @@ for (i in 1:length(Likes)) { # "Likes" could be replaced by "Price" or "Other_De
   df[df_index +i,"Material"] <-
     LocateAndReplace("Material: ",Other_Details[[i]])
   
-  df[df_index +i,"Color"] <-
-    LocateAndReplace("Color: ",Other_Details[[i]])
+  try(df[df_index +i,"Color"] <-
+    LocateAndReplace("Color: ",Other_Details[[i]]), silent = T)
   
-  try(df[df_index +i,"Heel_height"] <-
-    LocateAndReplace("Heel height: ",Other_Details[[i]]), silent = T) 
+  try(df[df_index +i,"Width"] <-
+    LocateAndReplace("Width: ",Other_Details[[i]]), silent = T) 
   # This will be empty for most observations
   
-  df[df_index +i,"Size"] <-
-    sub(" sizing guide", ""
-        ,LocateAndReplace("Size: ",Other_Details[[i]]))
-  # As the variable has some unwanted parts at the end of the string, 
-  # we will preform another "sub" action before assigning to 
-  # the dataframe
+  try(df[df_index +i,"Height"] <- 
+    LocateAndReplace("Height: ",Other_Details[[i]]),silent = T)
+  
+    try(df[df_index +i,"Depth"] <-
+        LocateAndReplace("Depth: ",Other_Details[[i]]), silent = T)
+
   
   df[df_index +i,"Location"] <-
     sub(",.+$","",
@@ -377,41 +441,42 @@ for (i in 1:length(Likes)) { # "Likes" could be replaced by "Price" or "Other_De
     paste(Other_Details[[i]][which(grepl(":",Other_Details[[i]]) == FALSE)],
           collapse = " ,")
   
-    df[df_index +i,"Online_since"] <-
+  df[df_index +i,"Date_sold"] <-
+    regmatches(Price[i],
+           regexpr("\\w+\\s{1}\\d{1,2},\\s{1}\\d{4}$",
+                   Price[i],perl = TRUE))
+  
+  df[df_index +i,"Online_since"] <-
      LocateAndReplace("Online since: ",
                                Other_Details[[i]])
   
   df[df_index +i,"Reference"] <-
     LocateAndReplace("Reference: ",Other_Details[[i]])
-  
+     
   
   }
 ```
 
 
 ``` {r Testing Zone,include = FALSE}
-main_webpage <- remDr$findElement("css", "body")
-Next_button <- remDr$findElement(using = "css",
-                               ".catalog__sortActionBar .catalogPagination__prevNextButton--next")
-main_webpage$mouseMoveToLocation(webElement = Next_button) 
-main_webpage$click(1)
+
+    Maximum_price <- remDr$findElement(using = "css",value = 
+                          ".vc-price-range__col--max .vc-price-range__label")
+    Maximum_price <- unlist(Maximum_price$getElementText())
+    Maximum_price <- as.numeric(gsub("[€$ ,]","",Maximum_price,perl = TRUE))
 
 
+  
 
-#.catalogPagination__prevNextButton__text
+# Trying to find a button and if it is a try error we will break.
+remDr$navigate(paste0("https://us.vestiairecollective.com/women-bags/handbags/"))
+page <- remDr$getPageSource()[[1]]
+page <- read_html(page)
+page %>% html_nodes(".descriptionList__block__list li") %>% html_text()
 
-      print(paste0("There are too many individual products in - ",
-                 Designer_List$Designers[Index_designer],
-                                     ", we move to the next one."))
-    next()
-
-for (x in c("hry","hhhh")) {
-  if (x == "hhhh") {
-   print(x)  
-  }
- 
-}
-      write.csv(Link_list,"LinkList.csv")
-      SortByPriceAsc()
+  test <- 
+    try(suppressMessages(page %>%
+                           html_node(".productPrice__sold") %>%
+                           html_text(), silent = T))
 ```
 
