@@ -383,80 +383,97 @@ LocateAndReplace <- function(String,Location)
 ```
 
 ``` {r Populating the dataframe}
-df_index <- nrow(df) # As we will populate the dataframe several times, this will make sure we are not overwriting content
 
 #Looping through each of the 3 variables we scraped
- for (i in 1:length(Likes)) { # "Likes" could be replaced by "Price" or "Other_Details".
-  if (is.null(Likes[[i]])) {
-    next()
-  }
-  df[df_index +i,"Initial_price"] <-
-    as.numeric(Price[[i]][1]) 
+ for (i in 2693:length(Link_list)) {
+   if (is.null(Other_Details[[i]]) == TRUE) {
+     next()
+   }
    
-  df[df_index +i,"Likes"] <-
+   
+### Treating the final price and the initial price from the price list string
+   temp_price <- Price_list[i]
+   temp_price <- gsub(",",".",
+                     gsub(" ","",
+                          gsub("\\h","",temp_price,perl = TRUE))) # Changing from coma to decimal point.
+
+   
+
+  df[i,"Price_sold"] <-
+    as.numeric(regmatches(temp_price,
+             regexpr("(?<=\200)\\d+(?=\200$)|(?<=\200)\\d+\\.\\d+(?=\200$)|\\d+(?=\200$)|\\d+\\.\\d+(?=\200$)",
+                     temp_price,perl = TRUE))) 
+   
+   
+  df[i,"Initial_price"] <-
+    as.numeric(as.numeric(regmatches(temp_price,
+             regexpr("^\\d+\\.\\d+(?=\200)|^\\d+(?=\200)",
+                     temp_price,perl = TRUE)))) 
+   
+  df[i,"Likes"] <-
     as.numeric(Likes[[i]])
   
   # When I can I will be using the "LocateAndReplace" function.
-  df[df_index +i,"Designer"] <- 
+  df[i,"Designer"] <- 
     LocateAndReplace("Designer: ",Other_Details[[i]])
   
-  try(df[df_index +i,"Model"] <- 
+  try(df[i,"Model"] <- 
     LocateAndReplace("Model: ",Other_Details[[i]]), silent = T)
   
-  df[df_index +i,"Price_sold"] <-
-    regmatches(Price[i],regexpr("(?<=Sold at )\\d+.+(?= on)",
-                                Price[i],perl = TRUE)) 
-  # This is in euros
+  df[i,"Condition"] <-
+    gsub("More infos","",LocateAndReplace("Condition: ",Other_Details[[i]]))
   
-  df[df_index +i,"Condition"] <-
-    LocateAndReplace("Condition: ",Other_Details[[i]])
-  
-  df[df_index +i,"Material"] <-
+  df[i,"Material"] <-
     LocateAndReplace("Material: ",Other_Details[[i]])
   
-  try(df[df_index +i,"Color"] <-
+  try(df[i,"Color"] <-
     LocateAndReplace("Color: ",Other_Details[[i]]), silent = T)
   
-  try(df[df_index +i,"Width"] <-
+  try(df[i,"Width"] <-
     LocateAndReplace("Width: ",Other_Details[[i]]), silent = T) 
   # This will be empty for most observations
   
-  try(df[df_index +i,"Height"] <- 
+  try(df[i,"Height"] <- 
     LocateAndReplace("Height: ",Other_Details[[i]]),silent = T)
   
-    try(df[df_index +i,"Depth"] <-
-        LocateAndReplace("Depth: ",Other_Details[[i]]), silent = T)
+  try(df[i,"Depth"] <-
+      LocateAndReplace("Depth: ",Other_Details[[i]]), silent = T)
 
+  df[i,"Location"] <- # Using regular expressions to extract location
+    gsub(",\\n.+\\n.+$","",
+        LocateAndReplace("Location:",Other_Details[[i]]),perl = TRUE)
   
-  df[df_index +i,"Location"] <-
-    sub(",.+$","",
-        LocateAndReplace("Location:",Other_Details[[i]]))
-  # Again, we will preform another sub before assigning to the df.
-  
-  try(df[df_index +i,"Seller"] <-
-    sub("^.+ from the seller ","",
-        LocateAndReplace("Location:",Other_Details[[i]])), silent = T)
-  
-  df[df_index +i,"Sold_with"] <-
+  df[i,"Seller"] <- # Using the Seller details variable
+    Seller_Details[[i]][1]
+    
+  df[i,"Sold_with"] <-
     paste(Other_Details[[i]][which(grepl(":",Other_Details[[i]]) == FALSE)],
           collapse = " ,")
   
-  df[df_index +i,"Date_sold"] <-
-    regmatches(Price[i],
-           regexpr("\\w+\\s{1}\\d{1,2},\\s{1}\\d{4}$",
-                   Price[i],perl = TRUE))
   
-  df[df_index +i,"Online_since"] <-
+  # Sadly as i didnt scrape the price variable in each page i dont have this detail now.
+  #df[df_index +i,"Date_sold"] <- regmatches(Price[i],regexpr("\\w+\\s{1}\\d{1,2},\\s{1}\\d{4}$",                   Price[i],perl = TRUE))
+  
+  df[i,"Online_since"] <-
      LocateAndReplace("Online since: ",
                                Other_Details[[i]])
   
-  df[df_index +i,"Reference"] <-
+  df[i,"Reference"] <-
     LocateAndReplace("Reference: ",Other_Details[[i]])
      
+  df[i,"Link"] <-
+    Link_list[i]
   
+  df[i,"Seller_title"] <-
+    sub(" \\d+.+$","",Seller_Details[[i]][match(table = grepl("sold",Seller_Details[[i]][]),x = TRUE)],perl = TRUE)
   }
 ```
+```{r Saving}
 
+write.csv(df,"Louis_vuitton_Final.csv",row.names = FALSE)
+
+
+```
 
 ``` {r Testing Zone,include = FALSE}
 
