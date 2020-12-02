@@ -1,0 +1,158 @@
+---
+title: "LouisVuitton_Analysis"
+author: "Ran K"
+date: "12/1/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(e1071)
+library(scales)
+library(stringi)
+```
+
+```{r Loading data}
+
+lv <- read.csv("Sold_items_raw_database.csv")
+
+str(lv)
+
+```
+
+```{r Treating NA values}
+#Na per row
+table(rowSums(is.na(lv)))
+
+# we will remove the rows with only NA values
+lv <-lv[-which(rowSums(is.na(lv)) == 20),]
+
+#Na per column
+colSums(is.na(lv))
+
+# will treat na values 1 column at a tine
+
+lv[which(is.na(lv$Condition) == TRUE),]
+
+# We dont really have anything to work with at this moment so ill remove these onese also
+
+lv <-lv[-which(is.na(lv$Condition) == TRUE),]
+
+lv %>%
+  count(Seller_title,sort = TRUE)
+lv$Seller_title[which(is.na(lv$Seller_title) == TRUE | lv$Seller_title =="")] <- "No title"
+
+
+# Changing NA values to 0 for the height , depth and Width
+lv[18:20] <- apply(lv[,18:20], 2, function(x) ifelse(is.na(x) == TRUE, 0,x))
+
+lv$Model[which(is.na(lv$Model) == TRUE)] <- "Unknown Model"
+
+sum(is.na(lv))
+# We gucci! (or Louis vuitton)
+### Removing whitespace
+
+lv[,] <- lapply(lv[,], trimws)
+```
+
+
+```{r Variable cleaning}
+### Date_Sold
+
+lv$Date_sold <- as.Date(lv$Date_sold,format = "%B %d, %Y")
+lv %>%
+  ggplot(aes(Date_sold)) + 
+  geom_histogram(binwidth = 1) +
+  scale_x_date(label = label_date(format = "%B"),breaks = breaks_width("1 month")) +
+  labs(title = "Histogram of Dates item were sold")
+
+### I highly suspect that the site deletes record of items after 6 months or so
+
+### Price_Sold
+lv$Price_sold <- as.numeric(str_replace(lv$Price_sold,",","\\."))
+
+lv %>%
+  ggplot(aes(Price_sold)) + 
+  geom_histogram(binwidth = 10) +
+  labs(title = "Histogram of final prices", 
+       subtitle = paste0("Skweness is ",round(skewness(lv$Price_sold),2),", Kurtosis is ",round(kurtosis(lv$Price_sold),2)))
+
+qqnorm(lv$Price_sold,pch = 1, frame = FALSE)
+
+# Looks quite normally distributed
+
+### Last_known_price
+
+lv$Last_known_price <- as.numeric(lv$Last_known_price)
+
+lv %>%
+  mutate(Price_diff = Price_sold - Last_known_price) %>%
+  ggplot(aes(Price_diff)) + 
+  geom_histogram(binwidth = 10)
+  
+### Last known price - I'll delete as I dont see how its adding anything, the only differences are because of the different time of information retrieval
+
+lv <- lv[,-match("Last_known_price",names(lv))]
+
+### Initial_price
+lv$Initial_price <- as.numeric(lv$Initial_price)
+
+lv %>%
+  ggplot(aes(Initial_price)) + 
+  geom_histogram(binwidth = 10)
+
+lv %>%
+  mutate(Price_diff = Price_sold - Initial_price) %>%
+  arrange(Price_diff) %>%
+  select(Price_sold,Initial_price,Price_diff) %>%
+  head(10)
+
+# These are the biggest differances between the initial price and the selling price, dollars seems suspicios
+
+# Not that suspicius after all
+
+### Desginer
+table(lv$Designer)
+
+### Likes
+lv$Likes <- as.numeric(lv$Likes)
+
+lv %>%
+  ggplot(aes(Likes)) + 
+  geom_histogram(binwidth = 10)
+
+### Model
+lv %>%
+  count(Model, sort = TRUE)
+
+
+### Dealing with special characters!!!
+
+### This manages to make the string readable in the console and in the  dataframe
+lv$Model[grep("<U\\+\\w+>",lv$Model)] <-
+  as.character(parse(text=shQuote(gsub("<U\\+([A-Z0-9]+)>", "\\\\u\\1",
+                                     lv$Model[grep("<U\\+\\w+>",lv$Model)]))))
+lv$Seller[grep("<U\\+\\w+>",lv$Seller)] <-
+  as.character(parse(text=shQuote(gsub("<U\\+([A-Z0-9]+)>", "\\\\u\\1",
+                                     lv$Seller[grep("<U\\+\\w+>",lv$Seller)]))))
+
+lv %>%
+  count(Model , sort = TRUE) %>%
+  mutate(Model = fct_reorder(Model,n)) %>%
+  head(16) %>%
+  ggplot(aes(Model,n)) +
+  geom_col() +
+  coord_flip()
+
+### Thank you Stackoverflow for 
+### as.character(parse(text=shQuote(gsub("<U\\+([A-Z0-9]+)>", "\\\\u\\1","<U+9577><U+6D32>"))))
+
+length(unique(lv$Model))
+
+
+```
+
+
+
+

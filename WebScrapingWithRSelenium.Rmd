@@ -10,14 +10,22 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(RSelenium)
 library(rvest)
-library(stringr)
 # 1. Lunch docker and set up a chrome enironment, the command is "docker run --name chrome -v /dev/shm:/dev/shm -d -p 4445:4444 -p 5901:5900 selenium/standalone-chrome-debug:latest"
 # 2. "docker ps -a" to verify that it is up
 # 3. Lunch tightVNC and connect to out server.
 ```
 
 ```{r Server Preparation, echo = FALSE}
-remDr <- remoteDriver(remoteServerAddr = "192.168.99.100", port = 4445L, browser = "chrome")
+#remDr <- remoteDriver(remoteServerAddr = "192.168.99.100", port = 4445L, browser = "chrome")
+#remDr <- remoteDriver(remoteServerAddr = "localhost", port = 4445L,browserName = "firefox")
+#remDr <- remoteDriver(remoteServerAddr = "192.168.99.100", port = 4445L,browserName = "chrome")
+
+
+remDr <- remoteDriver(
+  remoteServerAddr = "localhost",
+  port = 4445L,
+  browserName = "chrome"
+)
 remDr$open()
 ```
 
@@ -49,8 +57,9 @@ rm(main_webpage)
 ``` {r Functions we will use}
 GoToSleep <- function() {
   print("Going to sleep")
-  Sys.sleep(runif(1,4,6))
+  Sys.sleep(runif(1,10,12))
 }
+
 
 SortByPriceDesc <- function()
 {
@@ -109,28 +118,36 @@ Detect_Next_Page_button <- function()
 
 ``` {r Initialing variables for scraping links}
 # Initialising  the variables we will collect.
-Link_list <- read.csv("LouisVuitton_Links.csv")
+#Link_list <- read.csv("LouisVuitton_Links.csv")
+Link_list <- read.csv("LouisVuitton_sold_Links.csv")
 Link_list <- as.vector(Link_list[,1])
-Price_list <- read.csv("LouisVuitton_Price.csv")
+#Price_list <- read.csv("LouisVuitton_Price.csv")
+Price_list <- read.csv("LouisVuitton_Sold_Price.csv")
 Price_list <- as.vector(Price_list[,1])
 Designer_List <- read.csv ("DesignerList.csv")
 
 Price_list <- vector()
 Link_list <- vector()
 
+
+# These are the variables that are needed in ordre to populate the database
 Product_price <- list()
 Likes <- list()
 Other_Details <- list() # all other information (will be stored in a list)
 Seller_Details <- list()
-
+Current_price <- list()
+Price_sold <- list()
 
 # This will be the database which will contain all the individual products
-df <- 
+temp_df <- 
   data.frame(Date_sold = as.character(),
+             Price_sold = as.character(),
+             Current_price = as.character(),
+             Initial_price = as.character(),
              Likes = as.numeric(),
              Designer = as.character(),
              Model = as.character(),
-             Price_sold = as.character(), 
+              
              # As the site uses different currencies, ill do the exchange rate after.
              Condition = as.character(),
              Material = as.character(),
@@ -320,17 +337,12 @@ write.csv(Price_list,"LouisVuitton_Sold_Price.csv",row.names = FALSE,col.names =
 
 ```{r Scraping content from individual links}  
 temp_time <- Sys.time()
-for (Index_product in 4000:5500)
+### 9348
+for (Index_product in 9000:11881)
 {
   if (Index_product %% 100 == 0) {
     print(Sys.time()-temp_time)
     temp_time <- Sys.time()
-  }
-  if (Index_product %%10 == 0) {
-    print("Deploying decoy")
-    remDr$navigate("https://us.vestiairecollective.com/")
-    Sys.sleep(2)
-    
   }
   print(paste0("scraping product number - ",Index_product))
   remDr$navigate(as.character(Link_list[Index_product]))
@@ -343,14 +355,20 @@ for (Index_product in 4000:5500)
   # Scraping text and appending
 
     # Treating the price variable
-  #Product_price[[Index_product]] <- page %>% html_nodes(".productPrice__sold") %>% html_text()
+  Price_sold[[Index_product]] <- page %>% html_nodes(".productPrice__sold") %>% html_text()
   
-  #if (length(Product_price[[Index_product]]) == 0) {Product_price[[Index_product]] <- page %>%      html_nodes(".productPrice__price") %>% html_text() }
-
+ if (length(Price_sold[[Index_product]]) == 0) 
+ {
+   Current_price[[Index_product]] <-
+     page %>%
+     html_nodes(".productPrice__price") %>% html_text() 
+    }
+  
   ###################
   #As I decided to only treat items that where sold,
   #there is no need to scrape the price as it was already taked care of
   #in the link scraping step.
+  #Let's see maybe we can get some insight ---
   ###################
   
   
@@ -383,94 +401,113 @@ LocateAndReplace <- function(String,Location)
 ```
 
 ``` {r Populating the dataframe}
-
+temp_df <- read.csv("Sold_items_raw_database.csv")
+starting_point <- nrow(temp_df)
 #Looping through each of the 3 variables we scraped
- for (i in 2693:length(Link_list)) {
-   if (is.null(Other_Details[[i]]) == TRUE) {
+ for (i in seq(from = 1 ,to = length(Other_Details[]),by = 1))
+   {
+   
+   if (is.null(Other_Details[[i]]) == TRUE|length(Other_Details[[i]]) == 0) {
      next()
    }
    
-   
+
+### As somehow the list containing all the other detail gets duplicated, ill cut it exactly by half if its over 20 elements (which means its 100% to be duplicated)
+
+if (length(Other_Details[[i]]) >= 20) {
+  Other_Details[[i]] <- Other_Details[[i]][1:(length(Other_Details[[i]])/2)]
+}
+
 ### Treating the final price and the initial price from the price list string
    temp_price <- Price_list[i]
    temp_price <- gsub(",",".",
                      gsub(" ","",
                           gsub("\\h","",temp_price,perl = TRUE))) # Changing from coma to decimal point.
 
-   
+  try(temp_df[i,"Date_sold"] <- 
+    regmatches(Price_sold[[i]][1],
+               regexpr("\\w+\\s{1}\\d{1,2},\\s{1}\\d{4}$",
+                       Price_sold[[i]][1],perl = TRUE)),silent = T)  
 
-  df[i,"Price_sold"] <-
+    try(temp_df[i,"Price_sold"] <- 
+    as.numeric(gsub(",",".",(regmatches(Price_sold[[i]][1],
+               regexpr("(?<=at )\\d+,\\d+|(?<=at )\\d+",
+                       Price_sold[[i]][1],perl = TRUE))))),silent = T)  
+   
+  try(temp_df[i,"Last_known_price"] <-
     as.numeric(regmatches(temp_price,
              regexpr("(?<=\200)\\d+(?=\200$)|(?<=\200)\\d+\\.\\d+(?=\200$)|\\d+(?=\200$)|\\d+\\.\\d+(?=\200$)",
-                     temp_price,perl = TRUE))) 
+                     temp_price,perl = TRUE))), silent = T) 
    
    
-  df[i,"Initial_price"] <-
+  try(temp_df[i,"Initial_price"] <-
     as.numeric(as.numeric(regmatches(temp_price,
              regexpr("^\\d+\\.\\d+(?=\200)|^\\d+(?=\200)",
-                     temp_price,perl = TRUE)))) 
+                     temp_price,perl = TRUE)))) ,silent = T)
    
-  df[i,"Likes"] <-
+  temp_df[i,"Likes"] <-
     as.numeric(Likes[[i]])
   
   # When I can I will be using the "LocateAndReplace" function.
-  df[i,"Designer"] <- 
-    LocateAndReplace("Designer: ",Other_Details[[i]])
+  try(temp_df[i,"Designer"] <- 
+    LocateAndReplace("Designer: ",Other_Details[[i]]), silent = T)
   
-  try(df[i,"Model"] <- 
+  try(temp_df[i,"Model"] <- 
     LocateAndReplace("Model: ",Other_Details[[i]]), silent = T)
   
-  df[i,"Condition"] <-
-    gsub("More infos","",LocateAndReplace("Condition: ",Other_Details[[i]]))
+  try(temp_df[i,"Condition"] <-
+    gsub("More infos","",LocateAndReplace("Condition: ",Other_Details[[i]])), silent = T)
   
-  df[i,"Material"] <-
-    LocateAndReplace("Material: ",Other_Details[[i]])
+  try(temp_df[i,"Material"] <-
+    LocateAndReplace("Material: ",Other_Details[[i]]), silent = T)
   
-  try(df[i,"Color"] <-
+  try(temp_df[i,"Color"] <-
     LocateAndReplace("Color: ",Other_Details[[i]]), silent = T)
   
-  try(df[i,"Width"] <-
+  try(temp_df[i,"Width"] <-
     LocateAndReplace("Width: ",Other_Details[[i]]), silent = T) 
   # This will be empty for most observations
   
-  try(df[i,"Height"] <- 
+  try(temp_df[i,"Height"] <- 
     LocateAndReplace("Height: ",Other_Details[[i]]),silent = T)
   
-  try(df[i,"Depth"] <-
+  try(temp_df[i,"Depth"] <-
       LocateAndReplace("Depth: ",Other_Details[[i]]), silent = T)
 
-  df[i,"Location"] <- # Using regular expressions to extract location
+  try(temp_df[i,"Location"] <- # Using regular expressions to extract location
     gsub(",\\n.+\\n.+$","",
-        LocateAndReplace("Location:",Other_Details[[i]]),perl = TRUE)
+        LocateAndReplace("Location:",Other_Details[[i]]),perl = TRUE), silent = T)
   
-  df[i,"Seller"] <- # Using the Seller details variable
-    Seller_Details[[i]][1]
+  try(temp_df[i,"Seller"] <- # Using the Seller details variable
+    Seller_Details[[i]][1], silent = T)
     
-  df[i,"Sold_with"] <-
+  try(temp_df[i,"Sold_with"] <-
     paste(Other_Details[[i]][which(grepl(":",Other_Details[[i]]) == FALSE)],
-          collapse = " ,")
+          collapse = " ,"))
   
   
   # Sadly as i didnt scrape the price variable in each page i dont have this detail now.
-  #df[df_index +i,"Date_sold"] <- regmatches(Price[i],regexpr("\\w+\\s{1}\\d{1,2},\\s{1}\\d{4}$",                   Price[i],perl = TRUE))
+    
   
-  df[i,"Online_since"] <-
+  try(temp_df[i,"Online_since"] <-
      LocateAndReplace("Online since: ",
-                               Other_Details[[i]])
+                               Other_Details[[i]]), silent = T)
   
-  df[i,"Reference"] <-
-    LocateAndReplace("Reference: ",Other_Details[[i]])
+  try(temp_df[i,"Reference"] <-
+    LocateAndReplace("Reference: ",Other_Details[[i]]), silent = T)
      
-  df[i,"Link"] <-
+  temp_df[i,"Link"] <-
     Link_list[i]
   
-  df[i,"Seller_title"] <-
-    sub(" \\d+.+$","",Seller_Details[[i]][match(table = grepl("sold",Seller_Details[[i]][]),x = TRUE)],perl = TRUE)
+  try(temp_df[i,"Seller_title"] <-
+    sub(" \\d+.+$","",Seller_Details[[i]][match(table = grepl("sold",Seller_Details[[i]][]),x = TRUE)],perl = TRUE),silent = T)
   }
 ```
+
+
 ```{r Saving}
 
-write.csv(df,"Louis_vuitton_Final.csv",row.names = FALSE)
+write.csv(temp_df,"Sold_items_raw_database.csv",row.names = FALSE)
 
 
 ```
@@ -495,5 +532,8 @@ page %>% html_nodes(".descriptionList__block__list li") %>% html_text()
     try(suppressMessages(page %>%
                            html_node(".productPrice__sold") %>%
                            html_text(), silent = T))
+  
+  
+  test <- data.frame(table(temp_df$Reference))
 ```
 
