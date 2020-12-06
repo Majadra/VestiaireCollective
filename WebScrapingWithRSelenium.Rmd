@@ -338,7 +338,7 @@ write.csv(Price_list,"LouisVuitton_Sold_Price.csv",row.names = FALSE,col.names =
 ```{r Scraping content from individual links}  
 temp_time <- Sys.time()
 ### 9348
-for (Index_product in 9000:11881)
+for (Index_product in 10804:11881)
 {
   if (Index_product %% 100 == 0) {
     print(Sys.time()-temp_time)

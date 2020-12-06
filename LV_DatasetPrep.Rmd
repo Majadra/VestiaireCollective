@@ -11,6 +11,7 @@ library(tidyverse)
 library(e1071)
 library(scales)
 library(stringi)
+library(caret)
 ```
 
 ```{r Loading data}
@@ -20,6 +21,8 @@ lv <- read.csv("Sold_items_raw_database.csv")
 str(lv)
 
 ```
+
+# Treating NA values
 
 ```{r Treating NA values}
 #Na per row
@@ -45,7 +48,9 @@ lv$Seller_title[which(is.na(lv$Seller_title) == TRUE | lv$Seller_title =="")] <-
 
 
 # Changing NA values to 0 for the height , depth and Width
-lv[18:20] <- apply(lv[,18:20], 2, function(x) ifelse(is.na(x) == TRUE, 0,x))
+lv[c("Height","Width","Depth")] <- 
+  apply(lv[,c("Height","Width","Depth")], 2,
+        function(x) ifelse(is.na(x) == TRUE, "0",x))
 
 lv$Model[which(is.na(lv$Model) == TRUE)] <- "Unknown Model"
 
@@ -55,9 +60,9 @@ sum(is.na(lv))
 
 lv[,] <- lapply(lv[,], trimws)
 ```
+# Variable cleaning
 
-
-```{r Variable cleaning}
+```{r Date_Sold}
 ### Date_Sold
 
 lv$Date_sold <- as.Date(lv$Date_sold,format = "%B %d, %Y")
@@ -68,7 +73,9 @@ lv %>%
   labs(title = "Histogram of Dates item were sold")
 
 ### I highly suspect that the site deletes record of items after 6 months or so
+```
 
+```{r Price_Sold}
 ### Price_Sold
 lv$Price_sold <- as.numeric(str_replace(lv$Price_sold,",","\\."))
 
@@ -81,7 +88,9 @@ lv %>%
 qqnorm(lv$Price_sold,pch = 1, frame = FALSE)
 
 # Looks quite normally distributed
+```
 
+```{r Last_known_price}
 ### Last_known_price
 
 lv$Last_known_price <- as.numeric(lv$Last_known_price)
@@ -94,7 +103,10 @@ lv %>%
 ### Last known price - I'll delete as I dont see how its adding anything, the only differences are because of the different time of information retrieval
 
 lv <- lv[,-match("Last_known_price",names(lv))]
+```
 
+
+```{r Initial_price}
 ### Initial_price
 lv$Initial_price <- as.numeric(lv$Initial_price)
 
@@ -111,17 +123,23 @@ lv %>%
 # These are the biggest differances between the initial price and the selling price, dollars seems suspicios
 
 # Not that suspicius after all
+```
 
+```{r Desginer}
 ### Desginer
 table(lv$Designer)
+```
 
+```{r Likes}
 ### Likes
 lv$Likes <- as.numeric(lv$Likes)
 
 lv %>%
   ggplot(aes(Likes)) + 
   geom_histogram(binwidth = 10)
+```
 
+```{r Model}
 ### Model
 lv %>%
   count(Model, sort = TRUE)
@@ -149,10 +167,298 @@ lv %>%
 ### as.character(parse(text=shQuote(gsub("<U\\+([A-Z0-9]+)>", "\\\\u\\1","<U+9577><U+6D32>"))))
 
 length(unique(lv$Model))
+```
+
+```{r Condition}
+### Condition
+
+lv %>%
+  count(Condition , sort = TRUE) %>%
+  mutate(Condition = fct_reorder(Condition,n)) %>%
+  ggplot(aes(Condition,n)) +
+  geom_col() +
+  coord_flip()
+
+lv <-
+  lv %>% 
+  mutate(Condition = fct_relevel(Condition,c("Fair condition","Good condition","Very good condition","Never worn","Never worn, with tag")))
+```
+
+```{r Material}
+### Material
+
+lv %>%
+  count(Material , sort = TRUE) %>%
+  mutate(Material = fct_reorder(Material,n)) %>%
+  ggplot(aes(Material,n)) +
+  geom_col() +
+  coord_flip()
+
+lv %>%
+  group_by(Material) %>%
+  summarise(Avg_sold = mean(Price_sold),sd_sold = sd(Price_sold), Avg_offer = mean(Initial_price), n = n()) %>%
+  arrange(desc(sd_sold))
+
+length(unique(lv$Material))
+```
+
+```{r Color}
+### Color
+
+lv %>%
+  count(Color , sort = TRUE) %>%
+  mutate(Color = fct_reorder(Color,n)) %>%
+  ggplot(aes(Color,n)) +
+  geom_col() +
+  coord_flip()
+
+lv$Color[which(is.na(lv$Color) == TRUE)] <- "Other"
+```
+
+```{r Location}
+### Location
+
+lv %>%
+  count(Location , sort = TRUE)
+
+# There is one error that was made in during the scraping context
+lv[which(grepl("France,.",lv$Location) == TRUE),]
+
+lv <-
+lv %>%
+  mutate(Location = ifelse(grepl("France,.+",Location) == TRUE,"France",Location), 
+         Seller = ifelse(grepl("France,.+",Location) == TRUE,"nguyen",Seller))
 
 
 ```
 
 
+```{r Seller}
+### Seller
+  
+length(unique(lv$Seller))
+# More then 3000 unique sellers
+
+lv %>%
+  count(Seller , sort = TRUE) %>%
+  mutate(Seller = fct_reorder(Seller,n)) %>%
+  head(16) %>%
+  ggplot(aes(Seller,n)) +
+  geom_col() +
+  coord_flip()
+
+# Some sellers are very busy on the patform
+```
 
 
+```{r Sold_with}
+### Sold_with
+table(lv$Sold_with)
+
+# It is possible to create a dummy variable for each item that the bag can come with
+lv <- 
+  lv %>%
+  mutate(SW_Dustbag = ifelse(grepl("Dustbag",lv$Sold_with) == TRUE,1,0),
+         SW_Original_box = ifelse(grepl("Original box",lv$Sold_with) == TRUE,1,0),
+         SW_Original_papers = ifelse(grepl("Original papers",lv$Sold_with) == TRUE,1,0),
+         SW_Card_or_certificate = ifelse(grepl("Card or certificate",lv$Sold_with) == TRUE,1,0))
+# Sold_with column no longer needed
+
+lv <- lv[,-match("Sold_with",names(lv))]
+```
+
+```{r Online_since}
+### Online_since
+lv$Online_since[1:5]
+lv$Online_since <- as.Date(lv$Online_since,format = "%d/%m/%Y")
+lv %>%
+  ggplot(aes(Online_since)) + 
+  geom_histogram(binwidth = 1) +
+  scale_x_date(label = label_date(format = "%Y"),breaks = breaks_width("1 year")) +
+  labs(title = "Histogram of Dates item were sold")
+
+### Reference and link do not need any changes
+```
+
+```{r Seller_title}
+### Sellers title
+
+table(lv$Seller_title)
+# Ill do the same variable into dummy variables transformation as I did to the Sold_with variable
+
+lv <- 
+  lv %>%
+  mutate(ST_Expert_seller = ifelse(grepl("Expert Seller",lv$Seller_title) == TRUE,1,0),
+         ST_Professional_seller = ifelse(grepl("Professional seller",lv$Seller_title) == TRUE,1,0),
+          ST_Trusted_seller = ifelse(grepl("Trusted Seller",lv$Seller_title) == TRUE,1,0),
+          ST_Fashion_activist = ifelse(grepl("Fashion Activist",lv$Seller_title) == TRUE,1,0),
+         ST_Concierge_service = ifelse(grepl("Concierge Service",lv$Seller_title) == TRUE,1,0))
+
+
+lv <- lv[,-match("Seller_title",names(lv))]
+```
+
+```{r Measurments}
+lv[c("Height","Width","Depth")] <- 
+  apply(lv[,c("Height","Width","Depth")], 2,
+        function(x) as.numeric(gsub(" cm","",gsub(",","\\.",x))))
+
+```
+
+
+
+```{r Reordering columns}
+### Reordering columns
+lv <- lv[,c(1:2,12,3,4:10,15:21,11,22:26,13,14)]
+length(unique(names(lv)))
+names(lv)
+```
+
+
+```{r Renaming some columns}
+lv <- lv %>%
+  rename(Seller_name = Seller,
+         P_Height_cm = Height,
+         P_Depth_cm = Depth,
+         P_Width_cm = Width,
+         Sell_price_EU = Price_sold,
+         Start_price_EU = Initial_price)
+```
+
+I think the dataset is ready to work with now
+
+```{r}
+write.csv(lv,"LV_clean.csv")
+```
+
+# Feature selection
+
+```{r feature_selection}
+options(scipen = 999)
+# The first variable that comes to mind is - Start_price_EU
+
+lv %>%
+  ggplot(aes(Start_price_EU,Sell_price_EU)) + geom_point() +
+  geom_smooth(method = "lm")
+# We already see some outliers, we will treat them after.
+
+features <- c("Start_price_EU")
+
+# Next variable to check will be the Condition
+
+lv %>%
+  ggplot(aes(Condition,Sell_price_EU)) + geom_boxplot()
+
+# We see a clear positive trend between the condition of the item and the sell price.
+
+features <- append("Condition",features)
+
+# lets see if likes are a good candidate
+
+lv %>%
+  ggplot(aes(Likes,Sell_price_EU)) + geom_point()
+cor.test(lv$Likes,lv$Sell_price_EU)
+# The correlation is VERY weak, ill leave this feature out.
+
+# Next thing i'd like to check is the different dates affect the selling price
+lv <- lv %>%
+ mutate(DateDiff = as.numeric(Date_sold - Online_since))
+cor.test(lv$DateDiff,lv$Sell_price_EU)
+# No correlation, moving on.
+# Testing material
+
+lv %>%
+  mutate(Material = fct_reorder(Material,Sell_price_EU,mean)) %>%
+  ggplot(aes(Material,Sell_price_EU)) + geom_boxplot() + coord_flip()
+
+# Some specific material influance the price, ill add the variable 
+
+features <- append("Material",features)
+
+# Testing Color
+lv %>%
+  mutate(Color = fct_reorder(Color,Sell_price_EU,mean)) %>%
+  ggplot(aes(Color,Sell_price_EU)) + geom_boxplot() + coord_flip()
+# Not seeing any correlation
+x <-1
+test <- data.frame()
+# Testing Seller attributes
+for (i in c("ST_Expert_seller","ST_Professional_seller","ST_Trusted_seller","ST_Fashion_activist","ST_Concierge_service")) 
+{
+test[x,"Variable"] <- i
+test[x,"Correlation"] <- cor.test(lv[,c(i)],lv$Sell_price_EU)$estimate
+x <- x +1
+}
+test
+# Out of the 5 variables there are 3 with strong corralation coefficient, ill only add them
+
+features <- append(c("ST_Expert_seller","ST_Trusted_seller","ST_Fashion_activist"),features)
+
+# Next group of variables are the extra items variables - if the bag comes with original papers and so
+
+x <-1
+test <- data.frame()
+# Testing Seller attributes
+for (i in c("SW_Dustbag","SW_Original_box","SW_Original_papers","SW_Card_or_certificate")) 
+{
+test[x,"Variable"] <- i
+test[x,"Correlation"] <- cor.test(lv[,c(i)],lv$Sell_price_EU)$estimate
+x <- x +1
+}
+test
+# ill keep "Original_box" and "Dustbag"
+features <- append(c("SW_Original_box","SW_Dustbag"),features)
+
+# As for all other variables, they have either too many levels of there are too much missing data for me to compute
+train.data <- lv[which(names(lv) %in% c("Sell_price_EU",features) == TRUE)]
+m1 <- lm(data = train.data,Sell_price_EU ~ .)
+summary(m1)
+```
+```{r Playing with caret}
+
+
+# Set seed for reproducibility
+set.seed(123)
+# Set up repeated k-fold cross-validation
+train.control <- trainControl(method = "cv", number = 10)
+# Train the model
+step.model <- train(Sell_price_EU ~., data = train.data,
+                    method = "leapBackward", 
+                    tuneGrid = data.frame(nvmax = 1:20),
+                    trControl = train.control
+                    )
+step.model$results
+step.model$bestTune
+summary(step.model$finalModel)
+
+names(coef(step.model$finalModel, 9))
+train.data.final <- 
+  data.frame(Sell_price_EU = lv$Sell_price_EU,
+             Start_price_EU = lv$Start_price_EU,
+             Cond_Very_good = ifelse(lv$Condition == "Very good condition",1,0),
+             Cond_Never_worn = ifelse(lv$Condition == "Never worn",1,0),
+             Cond_Never_worn_tag = ifelse(lv$Condition == "Never worn, with tag",1,0),
+             Mat_Exotic_leather = ifelse(lv$Material == "Exotic leathers",1,0),
+             Mat_leather = ifelse(lv$Material == "Leather",1,0),
+             Mat_Patent_leather = ifelse(lv$Material == "Patent leather",1,0),
+             SW_Original_box = lv$SW_Original_box,
+             ST_Fashion_activist = lv$ST_Fashion_activist)
+m_final <- lm(data = train.data.final,Sell_price_EU ~.)
+summary(m_final)  
+coef(step.model$finalModel, 9)
+train.data.final <- train.data.final %>% filter(Sell_price_EU >10,Sell_price_EU <5000) %>%
+  mutate(Ip2 = Start_price_EU^2)
+m_final <- lm(data = train.data.final,Sell_price_EU ~.)
+summary(m_final)
+ggplot(data = train.data.final,aes(x = Sell_price_EU,y = m_final$residuals)) + geom_point()
+
+cor.test(train.data.final$Sell_price_EU^2)
+```
+
+
+
+
+
+
+
+`
