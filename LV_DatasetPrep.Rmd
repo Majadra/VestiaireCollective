@@ -29,7 +29,7 @@ str(lv)
 table(rowSums(is.na(lv)))
 
 # we will remove the rows with only NA values
-lv <-lv[-which(rowSums(is.na(lv)) == 20),]
+lv <- lv[which(rowSums(is.na(lv)) != ncol(lv)),]
 
 #Na per column
 colSums(is.na(lv))
@@ -337,6 +337,11 @@ write.csv(lv,"LV_clean.csv")
 options(scipen = 999)
 # The first variable that comes to mind is - Start_price_EU
 
+lv_1model <- lv %>% filter(Model =="Noé")
+m999 <- lm(data= lv_1model,Sell_price_EU ~ Start_price_EU+Likes+Condition+Material+ST_Expert_seller+
+           ST_Professional_seller+ST_Trusted_seller+ST_Fashion_activist+DateDiff)
+summary(m999)
+qqplot(m999$residuals,lv_1model$Sell_price_EU)
 lv %>%
   ggplot(aes(Start_price_EU,Sell_price_EU)) + geom_point() +
   geom_smooth(method = "lm")
@@ -410,7 +415,7 @@ test
 features <- append(c("SW_Original_box","SW_Dustbag"),features)
 
 # As for all other variables, they have either too many levels of there are too much missing data for me to compute
-train.data <- lv[which(names(lv) %in% c("Sell_price_EU",features) == TRUE)]
+train.data <- lv[which(names(lv) %in% c("Sell_price_EU",features,"Model") == TRUE)]
 m1 <- lm(data = train.data,Sell_price_EU ~ .)
 summary(m1)
 ```
@@ -430,8 +435,8 @@ step.model <- train(Sell_price_EU ~., data = train.data,
 step.model$results
 step.model$bestTune
 summary(step.model$finalModel)
-
-names(coef(step.model$finalModel, 9))
+step.model$coefnames
+names(coef(step.model$finalModel, 2))
 train.data.final <- 
   data.frame(Sell_price_EU = lv$Sell_price_EU,
              Start_price_EU = lv$Start_price_EU,
@@ -442,7 +447,8 @@ train.data.final <-
              Mat_leather = ifelse(lv$Material == "Leather",1,0),
              Mat_Patent_leather = ifelse(lv$Material == "Patent leather",1,0),
              SW_Original_box = lv$SW_Original_box,
-             ST_Fashion_activist = lv$ST_Fashion_activist)
+             ST_Fashion_activist = lv$ST_Fashion_activist,
+             Model = lv$Model)
 m_final <- lm(data = train.data.final,Sell_price_EU ~.)
 summary(m_final)  
 coef(step.model$finalModel, 9)
